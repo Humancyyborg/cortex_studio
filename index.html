@@ -185,7 +185,7 @@
   @media(min-width:640px){.masonry{column-count:2;}}
   @media(min-width:1024px){.masonry{column-count:3;column-gap:28px;}}
 
-  .work-card{position:relative;display:inline-block;width:100%;break-inside:avoid;margin-bottom:24px;background:#fff;border:4px solid var(--fg);box-shadow:8px 8px 0 0 var(--fg);transition:transform .2s ease-out;}
+  .work-card{position:relative;display:inline-block;width:100%;break-inside:avoid;margin-bottom:24px;background:#fff;border:4px solid var(--fg);box-shadow:8px 8px 0 0 var(--fg);transition:transform .25s ease-out, box-shadow .25s ease-out;}
   @media(min-width:1024px){.work-card{margin-bottom:28px;}}
   .work-card:hover{transform:translateY(-6px);}
   .corner-deco{position:absolute;top:-10px;right:-10px;width:26px;height:26px;border:2px solid var(--fg);z-index:3;}
@@ -195,6 +195,26 @@
 
   .mute-toggle{position:absolute;bottom:12px;right:12px;z-index:3;width:36px;height:36px;border-radius:9999px;background:#fff;border:2px solid var(--fg);display:flex;align-items:center;justify-content:center;box-shadow:2px 2px 0 0 var(--fg);pointer-events:none;}
   .video-frame:focus-visible{outline:3px solid var(--blue);outline-offset:-3px;}
+
+  /* ---------- WORK VIDEO MODAL (centered pop, click outside to close) ---------- */
+  .video-modal-backdrop{position:fixed;inset:0;background:rgba(18,18,18,.82);z-index:990;
+    display:flex;align-items:center;justify-content:center;padding:24px;
+    opacity:0;pointer-events:none;transition:opacity .2s ease-out;}
+  .video-modal-backdrop.open{opacity:1;pointer-events:auto;}
+
+  .video-modal-card{position:relative;width:min(92vw,640px);background:#fff;border:4px solid var(--fg);
+    box-shadow:12px 12px 0 0 var(--fg);transform:scale(.9);opacity:0;transition:transform .2s ease-out, opacity .2s ease-out;}
+  .video-modal-backdrop.open .video-modal-card{transform:scale(1);opacity:1;}
+
+  .video-modal-frame{position:relative;border-bottom:4px solid var(--fg);overflow:hidden;background:#000;max-height:78vh;display:flex;}
+  .video-modal-frame video{width:100%;max-height:78vh;display:block;object-fit:contain;margin:auto;}
+
+  .video-modal-body{padding:18px 22px;}
+
+  .video-modal-close{position:absolute;top:-16px;right:-16px;width:38px;height:38px;border-radius:9999px;
+    background:var(--red);border:2px solid var(--fg);display:flex;align-items:center;justify-content:center;
+    box-shadow:3px 3px 0 0 var(--fg);z-index:5;}
+  .video-modal-close:active{transform:translate(2px,2px);box-shadow:none;}
 
   .work-body{padding:18px 20px;}
   .work-cat{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:block;}
@@ -775,6 +795,62 @@
   var SHAPE_BY_COLOR = { red: '9999px', blue: '0', yellow: '9999px' };
   var ALL_VIDEO_ELS = []; // every <video> in the grid, so we can mute the rest on click
 
+  // ---- Centered modal: clicking a video moves it (same element, playback
+  // keeps going) into a centered pop-up with sound on. Click the dimmed
+  // backdrop, hit Escape, or use the close button to send it back. ----
+  var modalBackdrop = document.createElement('div');
+  modalBackdrop.className = 'video-modal-backdrop';
+  modalBackdrop.innerHTML =
+    '<div class="video-modal-card">' +
+      '<button class="video-modal-close" aria-label="Close video"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3L13 13M13 3L3 13" stroke="#fff" stroke-width="2" stroke-linecap="square"/></svg></button>' +
+      '<div class="video-modal-frame"></div>' +
+      '<div class="video-modal-body"></div>' +
+    '</div>';
+  document.body.appendChild(modalBackdrop);
+  var modalCard = modalBackdrop.querySelector('.video-modal-card');
+  var modalFrame = modalBackdrop.querySelector('.video-modal-frame');
+  var modalBody = modalBackdrop.querySelector('.video-modal-body');
+  var modalCloseBtn = modalBackdrop.querySelector('.video-modal-close');
+
+  var activeVideo = null;
+  var activeHomeFrame = null; // the grid .video-frame the video normally lives in
+
+  function openModal(video, homeFrame, v){
+    if(activeVideo && activeVideo !== video){ closeModal(); }
+    activeVideo = video;
+    activeHomeFrame = homeFrame;
+
+    ALL_VIDEO_ELS.forEach(function(vid){ vid.muted = true; });
+    video.muted = false;
+
+    modalFrame.appendChild(video); // re-parenting the same node keeps it playing
+    modalBody.innerHTML =
+      '<span class="work-cat" style="color:' + (COLOR_VAR[v.color] || 'var(--red)') + '">' + v.category + '</span>' +
+      '<p class="work-title">' + v.title + '</p>';
+
+    modalBackdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    refreshAllIcons();
+  }
+
+  function closeModal(){
+    if(!activeVideo) return;
+    activeVideo.muted = true;
+    activeHomeFrame.insertBefore(activeVideo, activeHomeFrame.firstChild);
+    modalBackdrop.classList.remove('open');
+    document.body.style.overflow = '';
+    activeVideo = null;
+    activeHomeFrame = null;
+    refreshAllIcons();
+  }
+
+  modalCard.addEventListener('click', function(e){ e.stopPropagation(); });
+  modalBackdrop.addEventListener('click', closeModal);
+  modalCloseBtn.addEventListener('click', closeModal);
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){ closeModal(); }
+  });
+
   function buildWorkCard(v){
     var card = document.createElement('div');
     card.className = 'work-card';
@@ -791,7 +867,7 @@
     frame.style.cursor = 'pointer';
     frame.setAttribute('role', 'button');
     frame.setAttribute('tabindex', '0');
-    frame.setAttribute('aria-label', 'Play ' + v.title + ' with sound');
+    frame.setAttribute('aria-label', 'Play ' + v.title + ' with sound, centered');
 
     var video = document.createElement('video');
     video.src = v.src;
@@ -823,15 +899,13 @@
     renderIcon();
     frame.appendChild(soundIcon);
 
-    function toggleSound(){
-      var willUnmute = video.muted;
-      ALL_VIDEO_ELS.forEach(function(vid){ vid.muted = true; });
-      video.muted = !willUnmute;
-      refreshAllIcons();
+    function handleOpen(){
+      if(activeVideo === video){ closeModal(); }
+      else{ openModal(video, frame, v); }
     }
-    frame.addEventListener('click', toggleSound);
+    frame.addEventListener('click', handleOpen);
     frame.addEventListener('keydown', function(e){
-      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleSound(); }
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); handleOpen(); }
     });
     frame._renderIcon = renderIcon;
 
@@ -925,3 +999,4 @@
 
 </body>
 </html>
+
